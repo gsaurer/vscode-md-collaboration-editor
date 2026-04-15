@@ -4,3 +4,4 @@ out/
 *.vsix
 .DS_Store
 testdocs/
+_make_icons.py

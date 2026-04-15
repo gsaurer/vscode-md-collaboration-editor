@@ -1,13 +1,14 @@
 {
-  "name": "md-collab-editor",
+  "name": "md-collaboration-editor",
   "displayName": "Markdown Collaboration Editor",
   "description": "WYSIWYG Markdown editor with Word-like inline commenting for teams",
   "version": "0.1.1",
-  "publisher": "your-publisher-id",
+  "publisher": "GSConsult",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/md-collab-editor"
+    "url": "https://github.com/gsaurer/vscode-md-collaboration-editor"
   },
   "engines": {
     "vscode": "^1.85.0"
