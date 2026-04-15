@@ -1,0 +1,117 @@
+{
+  "name": "md-collab-editor",
+  "displayName": "Markdown Collaboration Editor",
+  "description": "WYSIWYG Markdown editor with Word-like inline commenting for teams",
+  "version": "0.1.1",
+  "publisher": "your-publisher-id",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/md-collab-editor"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Editors"
+  ],
+  "keywords": [
+    "markdown",
+    "wysiwyg",
+    "comments",
+    "collaboration",
+    "review"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "mdCollabEditor.markdownEditor",
+        "displayName": "Markdown Collaboration Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mdCollabEditor.addComment",
+        "title": "Add Comment",
+        "category": "Markdown Collaboration Editor",
+      "icon": "$(comment)"
+      },
+      {
+        "command": "mdCollabEditor.toggleResolved",
+        "title": "Toggle Resolved Comments",
+        "category": "Markdown Collaboration Editor"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "mdCollabEditor.addComment",
+        "key": "ctrl+shift+;",
+        "mac": "cmd+shift+;"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "mdCollabEditor.addComment"
+        },
+        {
+          "command": "mdCollabEditor.toggleResolved"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Collaboration Editor",
+      "properties": {
+        "mdCollabEditor.authorName": {
+          "type": "string",
+          "default": "",
+          "description": "Override author name for comments (defaults to git user.name)"
+        },
+        "mdCollabEditor.authorEmail": {
+          "type": "string",
+          "default": "",
+          "description": "Override author email (defaults to git user.email)"
+        },
+        "mdCollabEditor.showResolvedComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show resolved comment threads in the sidebar"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js && vsce package --no-dependencies",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p webview-src/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "@milkdown/core": "latest",
+    "@milkdown/ctx": "latest",
+    "@milkdown/plugin-listener": "latest",
+    "@milkdown/preset-commonmark": "latest",
+    "@milkdown/preset-gfm": "^7.20.0",
+    "@milkdown/transformer": "latest",
+    "@milkdown/utils": "latest",
+    "prosemirror-commands": "^1.5.2",
+    "prosemirror-model": "^1.19.3",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.33.7"
+  }
+}
