@@ -27,6 +27,7 @@ export interface AnchorInfo {
   anchoredText: string;
   author?: string;
   body?: string;
+  date?: string;
 }
 
 // ── Plugin key (used to read/update plugin state) ────────────────────────────
@@ -94,9 +95,8 @@ function buildDecorations(
           icon.className = "comment-icon";
           icon.setAttribute("contenteditable", "false");
           icon.setAttribute("data-comment-id", capturedAnchor.commentId);
-          const tooltip = [capturedAnchor.author, capturedAnchor.body]
-            .filter(Boolean)
-            .join(": ");
+          const headerParts = [capturedAnchor.author, capturedAnchor.date ? formatTooltipDate(capturedAnchor.date) : undefined].filter(Boolean).join(" · ");
+          const tooltip = [headerParts, capturedAnchor.body].filter(Boolean).join("\n");
           if (tooltip) icon.setAttribute("title", tooltip);
           icon.textContent = "💬";
           icon.addEventListener("mousedown", (e) => {
@@ -239,4 +239,12 @@ export function stripAnchors(raw: string): {
     }
   );
   return { markdown, anchors };
+}
+
+function formatTooltipDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
 }

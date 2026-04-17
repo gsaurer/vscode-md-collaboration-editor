@@ -5,8 +5,13 @@ import {
   reInjectComments,
   removeComment,
   editCommentBody,
+  resolveComment,
+  addReply,
+  deleteReply,
+  editReply,
   generateId,
   SimpleComment,
+  Reply,
 } from "./commentParser";
 import { getGitUser } from "./gitConfig";
 
@@ -31,7 +36,13 @@ type WebviewMessage =
       markdown?: string;
     }
   | { type: "deleteComment"; id: string }
-  | { type: "editComment"; id: string; newBody: string };
+  | { type: "editComment"; id: string; newBody: string }
+  | { type: "resolveComment"; id: string; resolved: boolean }
+  | { type: "addReply"; commentId: string; body: string }
+  | { type: "deleteReply"; commentId: string; replyId: string }
+  | { type: "editReply"; commentId: string; replyId: string; newBody: string }
+  | { type: "resolveAll" }
+  | { type: "deleteAll" };
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +156,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               id: generateId(),
               author: user.name,
               body: msg.body,
+              date: new Date().toISOString(),
               anchoredText: msg.anchoredText,
             };
             // Re-inject existing comments first, then append the new one
@@ -188,18 +200,111 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             pushUpdate();
             break;
           }
+
+          case "resolveComment": {
+            const newText = resolveComment(
+              document.getText(),
+              msg.id,
+              msg.resolved
+            );
+            await applyWholeDocumentEdit(
+              document,
+              newText,
+              (v) => (isApplyingEdit = v)
+            );
+            pushUpdate();
+            break;
+          }
+
+          case "addReply": {
+            const workspacePath = vscode.workspace.getWorkspaceFolder(
+              document.uri
+            )?.uri.fsPath;
+            const user = getGitUser(workspacePath);
+            const reply: Reply = {
+              id: generateId(),
+              author: user.name,
+              body: msg.body,
+              date: new Date().toISOString(),
+            };
+            const newText = addReply(document.getText(), msg.commentId, reply);
+            await applyWholeDocumentEdit(
+              document,
+              newText,
+              (v) => (isApplyingEdit = v)
+            );
+            pushUpdate();
+            break;
+          }
+
+          case "deleteReply": {
+            const newText = deleteReply(
+              document.getText(),
+              msg.commentId,
+              msg.replyId
+            );
+            await applyWholeDocumentEdit(
+              document,
+              newText,
+              (v) => (isApplyingEdit = v)
+            );
+            pushUpdate();
+            break;
+          }
+
+          case "editReply": {
+            const newText = editReply(
+              document.getText(),
+              msg.commentId,
+              msg.replyId,
+              msg.newBody
+            );
+            await applyWholeDocumentEdit(
+              document,
+              newText,
+              (v) => (isApplyingEdit = v)
+            );
+            pushUpdate();
+            break;
+          }
+
+          case "resolveAll": {
+            const { comments: allComments } = parseDocument(document.getText());
+            let resolvedText = document.getText();
+            for (const c of allComments) {
+              resolvedText = resolveComment(resolvedText, c.id, true);
+            }
+            await applyWholeDocumentEdit(document, resolvedText, (v) => (isApplyingEdit = v));
+            pushUpdate();
+            break;
+          }
+
+          case "deleteAll": {
+            const { comments: allComments2 } = parseDocument(document.getText());
+            let deletedText = document.getText();
+            for (const c of allComments2) {
+              deletedText = removeComment(deletedText, c.id);
+            }
+            await applyWholeDocumentEdit(document, deletedText, (v) => (isApplyingEdit = v));
+            pushUpdate();
+            break;
+          }
         }
       }
     );
 
     // ── Sync external file changes → webview ──────────────────────────────────
 
+    // Debounce: parsing on every keystroke blocks the extension host, preventing
+    // the close button and other UI events from being processed in time.
+    let changeTimer: ReturnType<typeof setTimeout> | undefined;
     const changeDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
       if (
         e.document.uri.toString() === document.uri.toString() &&
         !isApplyingEdit
       ) {
-        pushUpdate();
+        if (changeTimer) { clearTimeout(changeTimer); }
+        changeTimer = setTimeout(() => { pushUpdate(); }, 200);
       }
     });
 
@@ -207,6 +312,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (this.activePanel === webviewPanel) {
         this.activePanel = undefined;
       }
+      if (changeTimer) { clearTimeout(changeTimer); }
       msgDisposable.dispose();
       changeDisposable.dispose();
     });
@@ -261,6 +367,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      position: relative;
     }
 
     /* ── Milkdown editor ──────────────────────────── */
@@ -412,20 +519,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     /* ── Comment icon ────────────────────────────────── */
     .comment-icon {
       display: inline-block;
-      font-size: 0.72em;
-      margin-left: 2px;
+      font-size: 1.25em;
+      margin-left: 3px;
       cursor: pointer;
-      vertical-align: text-top;
+      vertical-align: middle;
       user-select: none;
-      opacity: 0.65;
+      opacity: 0.9;
       transition: opacity 0.15s, transform 0.1s;
       line-height: 1;
     }
-    .comment-icon:hover { opacity: 1; transform: scale(1.2); }
+    .comment-icon:hover { opacity: 1; transform: scale(1.15); }
 
     /* ── Comment pane header ──────────────────────── */
     .pane-header {
-      padding: 10px 14px;
+      padding: 6px 8px 6px 14px;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
@@ -435,7 +542,59 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       background: var(--vscode-sideBarSectionHeader-background, transparent);
       user-select: none;
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
+    #header-more-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+      letter-spacing: -1px;
+      border: none;
+      background: transparent;
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      border-radius: 3px;
+      opacity: 0.5;
+      padding: 0;
+      font-weight: 400;
+      text-transform: none;
+    }
+    #header-more-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    /* Dropdown menu */
+    #header-menu {
+      display: none;
+      position: absolute;
+      right: 8px;
+      top: 34px;
+      background: var(--vscode-menu-background, var(--vscode-editor-background));
+      border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      z-index: 100;
+      min-width: 170px;
+      padding: 4px 0;
+    }
+    #header-menu.open { display: block; }
+    .header-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      cursor: pointer;
+      color: var(--vscode-menu-foreground, var(--vscode-foreground));
+      white-space: nowrap;
+    }
+    .header-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)); }
+    .header-menu-item.danger { color: var(--vscode-inputValidation-errorBorder); }
 
     #threads-container {
       flex: 1;
@@ -448,9 +607,37 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       border-bottom: 1px solid var(--vscode-panel-border);
       cursor: default;
       transition: background 0.1s;
+      position: relative;
     }
     .thread:hover { background: var(--vscode-list-hoverBackground); }
     .thread.active { background: var(--vscode-list-activeSelectionBackground); }
+    /* Per-card ... dropdown */
+    .thread-menu {
+      display: none;
+      position: absolute;
+      right: 8px;
+      top: 34px;
+      background: var(--vscode-menu-background, var(--vscode-editor-background));
+      border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      z-index: 200;
+      min-width: 140px;
+      padding: 4px 0;
+    }
+    .thread-menu.open { display: block; }
+    .thread-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--vscode-menu-foreground, var(--vscode-foreground));
+      white-space: nowrap;
+    }
+    .thread-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)); }
+    .thread-menu-item.danger { color: var(--vscode-inputValidation-errorBorder); }
 
     .thread-anchor-preview {
       font-size: 11px;
@@ -467,13 +654,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     .thread-meta {
       display: flex;
-      align-items: baseline;
+      align-items: center;
+      justify-content: space-between;
       gap: 6px;
       margin-bottom: 5px;
+    }
+    .thread-meta-left {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
     }
     .thread-author {
       font-weight: 600;
       font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .thread-body {
@@ -484,28 +681,67 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     /* ── Action buttons ───────────────────────────── */
-    .thread-actions {
-      margin-top: 9px;
+    .thread-icon-actions {
       display: flex;
-      gap: 5px;
-      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.12s;
     }
-    .btn {
-      font-size: 11px;
-      padding: 3px 9px;
-      border-radius: 3px;
+    .thread:hover .thread-icon-actions,
+    .reply:hover .thread-icon-actions,
+    .thread.active .thread-icon-actions { opacity: 1; }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      font-size: 15px;
+      line-height: 1;
+      border: none;
+      background: transparent;
+      color: var(--vscode-foreground);
       cursor: pointer;
-      border: 1px solid var(--vscode-button-border, transparent);
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
+      border-radius: 3px;
+      opacity: 0.55;
+      padding: 0;
       font-family: var(--vscode-font-family);
     }
-    .btn:hover { opacity: 0.85; }
-    .btn.primary {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
+    .icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    .icon-btn.resolve { color: var(--vscode-testing-iconPassed, #4caf50); }
+    .icon-btn.danger:hover { color: var(--vscode-inputValidation-errorBorder); opacity: 1; }
+    /* Save/cancel row — right-aligned below textarea, Word-style */
+    .thread-actions {
+      margin-top: 6px;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      justify-content: flex-end;
     }
-    .btn.danger { border-color: var(--vscode-inputValidation-errorBorder); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      font-size: 15px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--vscode-foreground);
+      opacity: 0.6;
+      padding: 0;
+      font-family: var(--vscode-font-family);
+    }
+    .btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    .btn.primary {
+      color: var(--vscode-testing-iconPassed, #4caf50);
+      opacity: 0.85;
+    }
+    .btn.primary:hover { opacity: 1; }
+    .btn.danger { color: var(--vscode-inputValidation-errorBorder); }
 
     /* ── Inline edit textarea ────────────────────────── */
     .edit-textarea {
@@ -566,7 +802,88 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       min-height: 72px;
     }
     #new-comment-panel textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
-    #new-comment-panel .panel-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    #new-comment-panel .panel-actions { display: flex; gap: 4px; justify-content: flex-end; }
+    #new-comment-panel .panel-actions .btn { font-size: 16px; }
+
+    /* ── Thread date ──────────────────────────────── */
+    .thread-date {
+      font-size: 11px;
+      opacity: 0.55;
+    }
+
+    /* ── Resolved state ───────────────────────────── */
+    .thread.resolved {
+      opacity: 0.5;
+    }
+    .thread.resolved .thread-body,
+    .thread.resolved .thread-anchor-preview {
+      text-decoration: line-through;
+      text-decoration-color: var(--vscode-foreground);
+    }
+    .thread.resolved .thread-author::after {
+      content: " ✓ Resolved";
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--vscode-testing-iconPassed, #4caf50);
+      margin-left: 4px;
+    }
+    .btn.resolve { color: var(--vscode-testing-iconPassed, #4caf50); }
+
+    /* ── Replies ──────────────────────────────────── */
+    .replies {
+      margin-top: 10px;
+      border-left: 2px solid var(--vscode-panel-border);
+      padding-left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .reply {
+      font-size: 12px;
+    }
+    .reply .thread-body {
+      font-size: 12px;
+    }
+    .reply .thread-actions {
+      margin-top: 5px;
+    }
+    .reply-edit-textarea {
+      width: 100%;
+      padding: 4px 6px;
+      margin-top: 4px;
+      font-size: 12px;
+      font-family: var(--vscode-font-family);
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 3px;
+      resize: vertical;
+      min-height: 44px;
+      box-sizing: border-box;
+    }
+    .reply-edit-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+
+    /* ── Reply input form ─────────────────────────── */
+    .reply-form {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .reply-input-textarea {
+      width: 100%;
+      padding: 5px 7px;
+      font-size: 12px;
+      font-family: var(--vscode-font-family);
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 3px;
+      resize: vertical;
+      min-height: 44px;
+      box-sizing: border-box;
+    }
+    .reply-input-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
 
     /* ── Empty state ──────────────────────────────── */
     .empty-state {
@@ -584,7 +901,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       <div id="editor"></div>
     </div>
     <div id="comment-pane">
-      <div class="pane-header">Comments</div>
+      <div class="pane-header">
+        <span>Comments</span>
+        <button id="header-more-btn" title="More actions">&#8943;</button>
+      </div>
+      <div id="header-menu">
+        <div class="header-menu-item" id="menu-resolve-all">&#10003;&nbsp; Resolve all</div>
+        <div class="header-menu-item danger" id="menu-delete-all">&#128465;&nbsp; Delete all</div>
+      </div>
       <div id="threads-container"></div>
     </div>
   </div>
@@ -600,8 +924,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     <div class="selection-preview" id="new-selection-preview"></div>
     <textarea id="new-comment-body" placeholder="Add a comment…" rows="3"></textarea>
     <div class="panel-actions">
-      <button class="btn" id="btn-cancel-comment">Cancel</button>
-      <button class="btn primary" id="btn-submit-comment">Comment</button>
+      <button class="btn" id="btn-cancel-comment" title="Cancel">✕</button>
+      <button class="btn primary" id="btn-submit-comment" title="Submit comment">&#10148;</button>
     </div>
   </div>
 

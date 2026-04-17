@@ -94,9 +94,8 @@ async function createEditor(
 
     const anchorPlugin = createAnchorPlugin(
       anchors,
-      (commentId) => { panel.editComment(commentId); }
+      (commentId) => { panel.focusComment(commentId); }
     );
-
     const newState = view.state.reconfigure({
       plugins: [...view.state.plugins, anchorPlugin],
     });
@@ -257,6 +256,30 @@ document.addEventListener("keydown", (e: KeyboardEvent) => {
   }
 });
 
+// ── Header "..." menu ─────────────────────────────────────────────────────────
+
+const headerMoreBtn = document.getElementById("header-more-btn")!;
+const headerMenu = document.getElementById("header-menu")!;
+
+headerMoreBtn.addEventListener("click", (e: MouseEvent) => {
+  e.stopPropagation();
+  headerMenu.classList.toggle("open");
+});
+
+document.addEventListener("click", () => {
+  headerMenu.classList.remove("open");
+});
+
+document.getElementById("menu-resolve-all")!.addEventListener("click", () => {
+  headerMenu.classList.remove("open");
+  post({ type: "resolveAll" });
+});
+
+document.getElementById("menu-delete-all")!.addEventListener("click", () => {
+  headerMenu.classList.remove("open");
+  post({ type: "deleteAll" });
+});
+
 // ── Message handling ──────────────────────────────────────────────────────────
 
 interface UpdateMessage {
@@ -282,6 +305,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
         anchoredText: c.anchoredText,
         author: c.author,
         body: c.body,
+        date: c.date,
       }));
 
       if (!milkdownEditor) {
