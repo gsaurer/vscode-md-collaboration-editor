@@ -2,20 +2,11 @@ import * as vscode from "vscode";
 import * as crypto from "crypto";
 import {
   parseDocument,
-  reInjectComments,
-  removeComment,
-  editCommentBody,
-  resolveComment,
-  addReply,
-  deleteReply,
-  editReply,
-  toggleLike,
-  toggleLikeReply,
   generateId,
   SimpleComment,
   Reply,
-  Like,
 } from "./commentParser";
+import { CommentStore, InlineMdCommentStore } from "./CommentStore";
 import { getGitUser } from "./gitConfig";
 
 // ── Message types (shared with webview) ──────────────────────────────────────
@@ -106,12 +97,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     // Guard against feedback loops when we programmatically edit the document
     let isApplyingEdit = false;
 
-    const pushUpdate = () => {
-      const { contentMarkdown, comments } = parseDocument(document.getText());
-      const workspacePath = vscode.workspace.getWorkspaceFolder(
-        document.uri
-      )?.uri.fsPath;
-      const currentUser = getGitUser(workspacePath);
+    const applyEdit = (newText: string) =>
+      applyWholeDocumentEdit(document, newText, (v) => (isApplyingEdit = v));
+
+    const store: CommentStore = new InlineMdCommentStore(
+      () => document.getText(),
+      applyEdit,
+    );
+
+    const workspacePath = () =>
+      vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+
+    const pushUpdate = async () => {
+      const { contentMarkdown, comments } = await store.load();
+      const currentUser = getGitUser(workspacePath());
       const msg: ExtensionMessage = {
         type: "update",
         markdown: contentMarkdown,
@@ -131,27 +130,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
 
           case "edit": {
-            if (isApplyingEdit) {
-              return;
-            }
-            // The webview sends clean markdown (no comment tags).
-            // Re-inject comments by locating each anchoredText in the new content.
-            const { comments } = parseDocument(document.getText());
-            const newText = reInjectComments(msg.markdown, comments);
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            if (isApplyingEdit) return;
+            await store.saveContent(msg.markdown);
             break;
           }
 
           case "addComment": {
-            const parsed = parseDocument(document.getText());
-            const workspacePath = vscode.workspace.getWorkspaceFolder(
-              document.uri
-            )?.uri.fsPath;
-            const user = getGitUser(workspacePath);
+            const user = getGitUser(workspacePath());
             const newComment: SimpleComment = {
               id: msg.id ?? generateId(),
               author: user.name,
@@ -159,151 +144,76 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               date: new Date().toISOString(),
               anchoredText: msg.anchoredText,
             };
-            // Re-inject existing comments first, then append the new one
-            const baseMarkdown = msg.markdown ?? parsed.contentMarkdown;
-            const withExisting = reInjectComments(baseMarkdown, parsed.comments);
-            const newText = reInjectComments(withExisting, [newComment]);
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.addComment(newComment, msg.markdown);
             pushUpdate();
             break;
           }
 
           case "deleteComment": {
-            const newText = removeComment(
-              document.getText(),
-              msg.id
-            );
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.deleteComment(msg.id);
             pushUpdate();
             break;
           }
 
           case "editComment": {
-            const newText = editCommentBody(
-              document.getText(),
-              msg.id,
-              msg.newBody
-            );
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.editComment(msg.id, msg.newBody);
             pushUpdate();
             break;
           }
 
           case "resolveComment": {
-            const newText = resolveComment(
-              document.getText(),
-              msg.id,
-              msg.resolved
-            );
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.resolveComment(msg.id, msg.resolved);
             pushUpdate();
             break;
           }
 
           case "addReply": {
-            const workspacePath = vscode.workspace.getWorkspaceFolder(
-              document.uri
-            )?.uri.fsPath;
-            const user = getGitUser(workspacePath);
+            const user = getGitUser(workspacePath());
             const reply: Reply = {
               id: generateId(),
               author: user.name,
               body: msg.body,
               date: new Date().toISOString(),
             };
-            const newText = addReply(document.getText(), msg.commentId, reply);
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.addReply(msg.commentId, reply);
             pushUpdate();
             break;
           }
 
           case "deleteReply": {
-            const newText = deleteReply(
-              document.getText(),
-              msg.commentId,
-              msg.replyId
-            );
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.deleteReply(msg.commentId, msg.replyId);
             pushUpdate();
             break;
           }
 
           case "editReply": {
-            const newText = editReply(
-              document.getText(),
-              msg.commentId,
-              msg.replyId,
-              msg.newBody
-            );
-            await applyWholeDocumentEdit(
-              document,
-              newText,
-              (v) => (isApplyingEdit = v)
-            );
+            await store.editReply(msg.commentId, msg.replyId, msg.newBody);
             pushUpdate();
             break;
           }
 
           case "resolveAll": {
-            const { comments: allComments } = parseDocument(document.getText());
-            let resolvedText = document.getText();
-            for (const c of allComments) {
-              resolvedText = resolveComment(resolvedText, c.id, true);
-            }
-            await applyWholeDocumentEdit(document, resolvedText, (v) => (isApplyingEdit = v));
+            await store.resolveAll();
             pushUpdate();
             break;
           }
 
           case "deleteAll": {
-            const { comments: allComments2 } = parseDocument(document.getText());
-            let deletedText = document.getText();
-            for (const c of allComments2) {
-              deletedText = removeComment(deletedText, c.id);
-            }
-            await applyWholeDocumentEdit(document, deletedText, (v) => (isApplyingEdit = v));
+            await store.deleteAll();
             pushUpdate();
             break;
           }
 
           case "likeComment": {
-            const workspacePath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
-            const user = getGitUser(workspacePath);
-            const newText = toggleLike(document.getText(), msg.id, user.name);
-            await applyWholeDocumentEdit(document, newText, (v) => (isApplyingEdit = v));
+            const user = getGitUser(workspacePath());
+            await store.toggleLike(msg.id, user.name);
             pushUpdate();
             break;
           }
 
           case "likeReply": {
-            const workspacePath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
-            const user = getGitUser(workspacePath);
-            const newText = toggleLikeReply(document.getText(), msg.commentId, msg.replyId, user.name);
-            await applyWholeDocumentEdit(document, newText, (v) => (isApplyingEdit = v));
+            const user = getGitUser(workspacePath());
+            await store.toggleLikeReply(msg.commentId, msg.replyId, user.name);
             pushUpdate();
             break;
           }
