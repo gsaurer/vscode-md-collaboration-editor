@@ -9,9 +9,12 @@ import {
   addReply,
   deleteReply,
   editReply,
+  toggleLike,
+  toggleLikeReply,
   generateId,
   SimpleComment,
   Reply,
+  Like,
 } from "./commentParser";
 import { getGitUser } from "./gitConfig";
 
@@ -29,12 +32,7 @@ export type ExtensionMessage =
 type WebviewMessage =
   | { type: "ready" }
   | { type: "edit"; markdown: string }
-  | {
-      type: "addComment";
-      anchoredText: string;
-      body: string;
-      markdown?: string;
-    }
+  | { type: "addComment"; id?: string; anchoredText: string; body: string; markdown?: string }
   | { type: "deleteComment"; id: string }
   | { type: "editComment"; id: string; newBody: string }
   | { type: "resolveComment"; id: string; resolved: boolean }
@@ -42,7 +40,9 @@ type WebviewMessage =
   | { type: "deleteReply"; commentId: string; replyId: string }
   | { type: "editReply"; commentId: string; replyId: string; newBody: string }
   | { type: "resolveAll" }
-  | { type: "deleteAll" };
+  | { type: "deleteAll" }
+  | { type: "likeComment"; id: string }
+  | { type: "likeReply"; commentId: string; replyId: string };
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             )?.uri.fsPath;
             const user = getGitUser(workspacePath);
             const newComment: SimpleComment = {
-              id: generateId(),
+              id: msg.id ?? generateId(),
               author: user.name,
               body: msg.body,
               date: new Date().toISOString(),
@@ -286,6 +286,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               deletedText = removeComment(deletedText, c.id);
             }
             await applyWholeDocumentEdit(document, deletedText, (v) => (isApplyingEdit = v));
+            pushUpdate();
+            break;
+          }
+
+          case "likeComment": {
+            const workspacePath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+            const user = getGitUser(workspacePath);
+            const newText = toggleLike(document.getText(), msg.id, user.name);
+            await applyWholeDocumentEdit(document, newText, (v) => (isApplyingEdit = v));
+            pushUpdate();
+            break;
+          }
+
+          case "likeReply": {
+            const workspacePath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+            const user = getGitUser(workspacePath);
+            const newText = toggleLikeReply(document.getText(), msg.commentId, msg.replyId, user.name);
+            await applyWholeDocumentEdit(document, newText, (v) => (isApplyingEdit = v));
             pushUpdate();
             break;
           }
@@ -598,18 +616,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     #threads-container {
       flex: 1;
-      overflow-y: auto;
+      overflow: hidden;
+      position: relative;
     }
 
     /* ── Comment card ──────────────────────────────── */
     .thread {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--vscode-panel-border);
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
       cursor: default;
-      transition: background 0.1s;
-      position: relative;
+      transition: background 0.1s, box-shadow 0.1s;
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
     }
-    .thread:hover { background: var(--vscode-list-hoverBackground); }
+    .thread:hover { background: var(--vscode-list-hoverBackground); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
     .thread.active { background: var(--vscode-list-activeSelectionBackground); }
     /* Per-card ... dropdown */
     .thread-menu {
@@ -679,18 +703,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       white-space: pre-wrap;
       word-break: break-word;
     }
+    /* Like button — in the meta icon row */
+    .like-btn { font-size: 13px; }
+    .like-btn.liked { opacity: 1; color: var(--vscode-textLink-foreground, #3794ff); }
+    .like-btn.has-likes { opacity: 0.85 !important; }
+    .like-btn .like-count { font-size: 10px; margin-left: 1px; }
 
     /* ── Action buttons ───────────────────────────── */
     .thread-icon-actions {
       display: flex;
       gap: 2px;
       flex-shrink: 0;
-      opacity: 0;
-      transition: opacity 0.12s;
     }
-    .thread:hover .thread-icon-actions,
-    .reply:hover .thread-icon-actions,
-    .thread.active .thread-icon-actions { opacity: 1; }
     .icon-btn {
       display: inline-flex;
       align-items: center;
@@ -741,6 +765,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       opacity: 0.85;
     }
     .btn.primary:hover { opacity: 1; }
+    .btn:disabled, .btn.primary:disabled { opacity: 0.3; pointer-events: none; }
     .btn.danger { color: var(--vscode-inputValidation-errorBorder); }
 
     /* ── Inline edit textarea ────────────────────────── */
@@ -762,22 +787,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     /* ── "Add comment" new-thread panel ──────────────*/
     #new-comment-panel {
-      position: fixed;
-      bottom: 24px;
-      right: 316px;
-      width: 280px;
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      box-sizing: border-box;
       background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
-      border-radius: 6px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-      padding: 12px;
+      border: 1px solid var(--vscode-focusBorder);
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      padding: 10px 12px;
       display: none;
       flex-direction: column;
       gap: 8px;
-      z-index: 100;
+      z-index: 300;
     }
     #new-comment-panel.visible { display: flex; }
-    #new-comment-panel label { font-size: 11px; font-weight: 600; }
     #new-comment-panel .selection-preview {
       font-size: 11px;
       background: var(--vscode-textBlockQuote-background);
@@ -799,16 +823,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       border: 1px solid var(--vscode-input-border);
       border-radius: 3px;
       resize: vertical;
-      min-height: 72px;
+      min-height: 56px;
+      box-sizing: border-box;
     }
     #new-comment-panel textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
     #new-comment-panel .panel-actions { display: flex; gap: 4px; justify-content: flex-end; }
     #new-comment-panel .panel-actions .btn { font-size: 16px; }
 
     /* ── Thread date ──────────────────────────────── */
-    .thread-date {
+    .thread-date-line {
       font-size: 11px;
-      opacity: 0.55;
+      opacity: 0.5;
+      margin-top: 4px;
+      padding: 0 2px;
     }
 
     /* ── Resolved state ───────────────────────────── */
@@ -838,6 +865,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       flex-direction: column;
       gap: 8px;
     }
+    /* Hide reply action buttons until hovered */
+    .reply .reply-icon-actions-hover { opacity: 0; transition: opacity 0.12s; }
+    .reply:hover .reply-icon-actions-hover,
+    .reply .reply-icon-actions-hover:has(.has-likes) { opacity: 1; }
     .reply {
       font-size: 12px;
     }
@@ -863,27 +894,39 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
     .reply-edit-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
 
-    /* ── Reply input form ─────────────────────────── */
-    .reply-form {
-      margin-top: 10px;
+    /* ── Reply bar (always-visible, Word-style) ───── */
+    .reply-bar {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
+      padding: 6px 8px 8px;
+      border-top: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.2));
+      margin-top: 4px;
     }
-    .reply-input-textarea {
+    .reply-bar-textarea {
       width: 100%;
-      padding: 5px 7px;
+      resize: none;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      padding: 4px 6px;
       font-size: 12px;
       font-family: var(--vscode-font-family);
-      background: var(--vscode-input-background);
+      background: var(--vscode-input-background, rgba(128,128,128,0.08));
       color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border);
-      border-radius: 3px;
-      resize: vertical;
-      min-height: 44px;
+      min-height: 26px;
       box-sizing: border-box;
+      overflow: hidden;
     }
-    .reply-input-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+    .reply-bar-textarea:focus {
+      outline: none;
+      border-color: var(--vscode-focusBorder);
+    }
+    .reply-bar-actions {
+      display: none;
+      gap: 2px;
+      justify-content: flex-end;
+    }
+    .reply-bar.active .reply-bar-actions { display: flex; }
 
     /* ── Empty state ──────────────────────────────── */
     .empty-state {
@@ -916,17 +959,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   <!-- Right-click context menu -->
   <div id="ctx-menu">
     <div class="ctx-item" id="ctx-add-comment">💬 Add Comment</div>
-  </div>
-
-  <!-- Floating "add comment" form, shown when user triggers the command -->
-  <div id="new-comment-panel">
-    <label>After:</label>
-    <div class="selection-preview" id="new-selection-preview"></div>
-    <textarea id="new-comment-body" placeholder="Add a comment…" rows="3"></textarea>
-    <div class="panel-actions">
-      <button class="btn" id="btn-cancel-comment" title="Cancel">✕</button>
-      <button class="btn primary" id="btn-submit-comment" title="Submit comment">&#10148;</button>
-    </div>
   </div>
 
   <script nonce="${nonce}" src="${scriptUri}"></script>

@@ -20,6 +20,14 @@ export interface Reply {
   body: string;
   /** ISO 8601 timestamp */
   date?: string;
+  likes?: Like[];
+}
+
+export interface Like {
+  /** Name of the user who liked */
+  author: string;
+  /** ISO 8601 timestamp of the like */
+  date: string;
 }
 
 export interface SimpleComment {
@@ -33,6 +41,8 @@ export interface SimpleComment {
   resolved?: boolean;
   /** Threaded replies */
   replies?: Reply[];
+  /** Users who liked this comment */
+  likes?: Like[];
   /**
    * Short raw-markdown snippet from immediately before the comment tag.
    * Used solely as a positional marker — to locate where to place the
@@ -96,6 +106,7 @@ export function parseDocument(raw: string): ParsedDocument {
           date: parsed.date,
           resolved: parsed.resolved,
           replies: Array.isArray(parsed.replies) ? parsed.replies : undefined,
+          likes: Array.isArray(parsed.likes) ? parsed.likes : undefined,
           anchoredText: extractPositionContext(raw.slice(0, m.index)),
         });
       }
@@ -150,6 +161,7 @@ export function reInjectComments(
     if (comment.date !== undefined) data["date"] = comment.date;
     if (comment.resolved !== undefined) data["resolved"] = comment.resolved;
     if (comment.replies?.length) data["replies"] = comment.replies;
+    if (comment.likes?.length) data["likes"] = comment.likes;
     const tag = `<!-- COMMENT ${JSON.stringify(data)} -->`;
     result = result.slice(0, insertPos) + tag + result.slice(insertPos);
   }
@@ -239,6 +251,52 @@ export function editReply(markdown: string, commentId: string, replyId: string, 
       const parsed = JSON.parse(json) as Partial<SimpleComment>;
       if (parsed.id !== commentId || !Array.isArray(parsed.replies)) return match;
       parsed.replies = parsed.replies.map((r) => r.id === replyId ? { ...r, body: newBody } : r);
+      return `<!-- COMMENT ${JSON.stringify(parsed)} -->`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/** Toggle a like on a comment. Adds if the user hasn't liked, removes if they have. */
+export function toggleLike(markdown: string, commentId: string, author: string): string {
+  return markdown.replace(COMMENT_RE_JSON, (match, json: string) => {
+    try {
+      const parsed = JSON.parse(json) as Partial<SimpleComment>;
+      if (parsed.id !== commentId) return match;
+      const likes: Like[] = Array.isArray(parsed.likes) ? [...parsed.likes] : [];
+      const idx = likes.findIndex((l) => l.author === author);
+      if (idx === -1) {
+        likes.push({ author, date: new Date().toISOString() });
+      } else {
+        likes.splice(idx, 1);
+      }
+      parsed.likes = likes.length ? likes : undefined;
+      if (parsed.likes === undefined) delete parsed.likes;
+      return `<!-- COMMENT ${JSON.stringify(parsed)} -->`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/** Toggle a like on a reply. Adds if the user hasn't liked, removes if they have. */
+export function toggleLikeReply(markdown: string, commentId: string, replyId: string, author: string): string {
+  return markdown.replace(COMMENT_RE_JSON, (match, json: string) => {
+    try {
+      const parsed = JSON.parse(json) as Partial<SimpleComment>;
+      if (parsed.id !== commentId || !Array.isArray(parsed.replies)) return match;
+      parsed.replies = parsed.replies.map((r) => {
+        if (r.id !== replyId) return r;
+        const likes: Like[] = Array.isArray(r.likes) ? [...r.likes] : [];
+        const idx = likes.findIndex((l) => l.author === author);
+        if (idx === -1) {
+          likes.push({ author, date: new Date().toISOString() });
+        } else {
+          likes.splice(idx, 1);
+        }
+        return { ...r, likes: likes.length ? likes : undefined };
+      });
       return `<!-- COMMENT ${JSON.stringify(parsed)} -->`;
     } catch {
       return match;

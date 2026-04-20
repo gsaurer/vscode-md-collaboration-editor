@@ -46,7 +46,10 @@ let milkdownEditor: Editor | null = null;
 let editorView: EditorView | null = null;
 /** Guard: don't echo edits back to host while we're applying an update */
 let suppressEdit = false;
-let pendingAnchoredText: string | null = null;
+/** Snapshot of the last known comment list and anchors (for scroll/resize repositioning) */
+let latestComments: CommentData[] = [];
+let latestAnchors: AnchorInfo[] = [];
+let currentUser = { name: "Me", email: "" };
 
 // ── Scroll editor to a comment anchor ────────────────────────────────────────
 
@@ -120,6 +123,7 @@ function setEditorContent(markdown: string, anchors: AnchorInfo[]): void {
       );
     }
     suppressEdit = false;
+    panel.positionCards();
   });
 }
 
@@ -152,67 +156,25 @@ function getCursorContext(): string {
   return before.length <= 30 ? before : before.slice(-30);
 }
 
-// ── New-comment floating form ─────────────────────────────────────────────────
+// ── New-comment form (posts immediately, opens edit mode on round-trip) ───────
 
-const newCommentPanel = document.getElementById("new-comment-panel")!;
-const newSelectionPreview = document.getElementById("new-selection-preview")!;
-const newCommentBody = document.getElementById(
-  "new-comment-body"
-) as HTMLTextAreaElement;
-const btnCancelComment = document.getElementById("btn-cancel-comment")!;
-const btnSubmitComment = document.getElementById("btn-submit-comment")!;
+/** ID of the comment we just created and are waiting to open in edit mode */
+let pendingNewCommentId: string | null = null;
+
+function generateClientId(): string {
+  return Math.random().toString(36).slice(2, 8).padEnd(6, "0");
+}
 
 function openNewCommentForm(capturedContext?: string): void {
   const context = capturedContext ?? getCursorContext();
+  const id = generateClientId();
+  pendingNewCommentId = id;
 
-  pendingAnchoredText = context;
-
-  newSelectionPreview.textContent = context
-    ? (context.length > 60 ? "…" + context.slice(-60) : context)
-    : "(start of block)";
-  newCommentBody.value = "";
-  newCommentPanel.classList.add("visible");
-  newCommentBody.focus();
-}
-
-function closeNewCommentForm(): void {
-  newCommentPanel.classList.remove("visible");
-  pendingAnchoredText = null;
-}
-
-function submitNewComment(): void {
-  const body = newCommentBody.value.trim();
-  if (!body) {
-    return;
-  }
-
-  // Get current clean markdown from Milkdown
   let currentMarkdown = "";
-  if (milkdownEditor) {
-    currentMarkdown = milkdownEditor.action(getMarkdown()) ?? "";
-  }
+  if (milkdownEditor) currentMarkdown = milkdownEditor.action(getMarkdown()) ?? "";
 
-  // Notify extension host — it will inject the comment and save
-  post({
-    type: "addComment",
-    anchoredText: pendingAnchoredText ?? "",
-    body,
-    markdown: currentMarkdown,
-  });
-
-  closeNewCommentForm();
+  post({ type: "addComment", id, anchoredText: context, body: "\u200b", markdown: currentMarkdown });
 }
-
-btnCancelComment.addEventListener("click", closeNewCommentForm);
-btnSubmitComment.addEventListener("click", submitNewComment);
-newCommentBody.addEventListener("keydown", (e: KeyboardEvent) => {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-    submitNewComment();
-  }
-  if (e.key === "Escape") {
-    closeNewCommentForm();
-  }
-});
 
 // ── Keyboard shortcut: Ctrl+Shift+; ──────────────────────────────────────────
 
@@ -297,21 +259,39 @@ window.addEventListener("message", async (event: MessageEvent) => {
 
   switch (msg.type) {
     case "update": {
-      panel.setComments(msg.comments);
-
-      // Convert comments to AnchorInfo for the decoration plugin
-      const anchors: AnchorInfo[] = msg.comments.map((c) => ({
+      latestComments = msg.comments;
+      latestAnchors = msg.comments.map((c) => ({
         commentId: c.id,
         anchoredText: c.anchoredText,
         author: c.author,
         body: c.body,
         date: c.date,
       }));
+      if (msg.currentUser) currentUser = msg.currentUser;
+      panel.setComments(msg.comments);
+
+      // Capture pending ID before async work clears it
+      const pendingId = pendingNewCommentId;
+      if (pendingId) pendingNewCommentId = null;
 
       if (!milkdownEditor) {
-        milkdownEditor = await createEditor(msg.markdown, anchors);
+        milkdownEditor = await createEditor(msg.markdown, latestAnchors);
+        requestAnimationFrame(() => {
+          panel.positionCards();
+          if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
+            panel.editComment(pendingId, true);
+          }
+        });
       } else {
-        setEditorContent(msg.markdown, anchors);
+        setEditorContent(msg.markdown, latestAnchors);
+        // Wait for setEditorContent's rAF (anchor injection) to complete,
+        // then open edit mode — double rAF ensures anchors are in the DOM
+        if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            panel.positionCards();
+            panel.editComment(pendingId, true);
+          }));
+        }
       }
       break;
     }
@@ -327,7 +307,10 @@ window.addEventListener("message", async (event: MessageEvent) => {
     }
   }
 });
+// ── Scroll / resize → reposition comment cards ──────────────────────────────
 
+document.getElementById("editor-pane")!.addEventListener("scroll", () => panel.positionCards(), { passive: true });
+window.addEventListener("resize", () => panel.positionCards());
 // ── Ready signal ──────────────────────────────────────────────────────────────
 
 post({ type: "ready" });
