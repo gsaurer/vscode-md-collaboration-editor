@@ -16,6 +16,7 @@ body {
   overflow-y: auto;
   padding: 32px 48px;
   min-width: 0;
+  position: relative;
 }
 
 #comment-pane {
@@ -578,4 +579,25 @@ body {
   opacity: 0.55;
   text-align: center;
   line-height: 1.6;
+}
+
+/* ── Mermaid diagrams ─────────────────────────────── */
+#mermaid-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+.mermaid-output {
+  position: absolute;
+  background: var(--vscode-editor-background);
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+}
+.mermaid-output svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }

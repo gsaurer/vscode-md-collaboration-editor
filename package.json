@@ -44,7 +44,7 @@
         "command": "mdCollabEditor.addComment",
         "title": "Add Comment",
         "category": "Markdown Collaboration Editor",
-      "icon": "$(comment)"
+        "icon": "$(comment)"
       },
       {
         "command": "mdCollabEditor.toggleResolved",
@@ -127,6 +127,7 @@
     "@milkdown/preset-gfm": "^7.20.0",
     "@milkdown/transformer": "latest",
     "@milkdown/utils": "latest",
+    "mermaid": "^11.14.0",
     "prosemirror-commands": "^1.5.2",
     "prosemirror-model": "^1.19.3",
     "prosemirror-state": "^1.4.3",

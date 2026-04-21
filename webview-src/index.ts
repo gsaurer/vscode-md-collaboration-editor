@@ -84,6 +84,7 @@ import {
   AnchorInfo,
 } from "./commentPlugin";
 import { CommentPanel, CommentData } from "./commentPanel";
+import mermaid from "mermaid";
 
 // ── VS Code API ───────────────────────────────────────────────────────────────
 
@@ -95,6 +96,79 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 const post = (msg: object) => vscode.postMessage(msg);
+
+// ── Mermaid diagram rendering ─────────────────────────────────────────────────
+// SVGs are placed into #mermaid-layer, a sibling of #editor that ProseMirror
+// never manages. We never touch ProseMirror's DOM, so no feedback loops.
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: (document.body.getAttribute("data-vscode-theme-kind") ?? "").includes("light") ? "default" : "dark",
+});
+
+const mermaidSvgCache = new Map<string, string>(); // definition → rendered SVG
+let mermaidDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let mermaidRendering = false;
+let mermaidPendingAfterRender = false;
+
+function positionMermaidOverlays(): void {
+  const pane = document.getElementById("editor-pane")!;
+  const layer = document.getElementById("mermaid-layer")!;
+  const paneRect = pane.getBoundingClientRect();
+  layer.innerHTML = "";
+  const blocks = document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]');
+  for (const pre of Array.from(blocks)) {
+    const def = (pre.textContent ?? "").trim();
+    const svg = mermaidSvgCache.get(def);
+    if (!svg) continue;
+    const rect = pre.getBoundingClientRect();
+    const container = document.createElement("div");
+    container.className = "mermaid-output";
+    container.style.top  = `${rect.top  - paneRect.top  + pane.scrollTop}px`;
+    container.style.left = `${rect.left - paneRect.left}px`;
+    container.style.width = `${rect.width}px`;
+    container.style.minHeight = `${rect.height}px`;
+    container.innerHTML = svg;
+    layer.appendChild(container);
+  }
+}
+
+async function renderMermaidDiagrams(): Promise<void> {
+  if (mermaidRendering) { mermaidPendingAfterRender = true; return; }
+  mermaidRendering = true;
+  try {
+    const blocks = document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]');
+    for (const pre of Array.from(blocks)) {
+      const def = (pre.textContent ?? "").trim();
+      if (!def || mermaidSvgCache.has(def)) continue;
+      const id = `mermaid-${Math.random().toString(36).slice(2, 10)}`;
+      try {
+        const { svg } = await mermaid.render(id, def);
+        mermaidSvgCache.set(def, svg);
+      } catch (err) {
+        console.warn("[mermaid] render failed:", err);
+        // Don't cache failures so they can be retried once the diagram is valid
+      }
+    }
+    positionMermaidOverlays();
+  } finally {
+    mermaidRendering = false;
+    if (mermaidPendingAfterRender) {
+      mermaidPendingAfterRender = false;
+      scheduleMermaidRender();
+    }
+  }
+}
+
+function scheduleMermaidRender(): void {
+  if (mermaidDebounceTimer) clearTimeout(mermaidDebounceTimer);
+  mermaidDebounceTimer = setTimeout(() => { renderMermaidDiagrams(); }, 400);
+}
+
+// Watch ProseMirror's DOM for content changes. We only write to #mermaid-layer
+// (outside #editor), so our own mutations never re-trigger this observer.
+const mermaidObserver = new MutationObserver(scheduleMermaidRender);
+mermaidObserver.observe(document.getElementById("editor")!, { childList: true, subtree: true });
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -354,6 +428,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
         milkdownEditor = await createEditor(resolveImagePaths(msg.markdown), latestAnchors);
         requestAnimationFrame(() => {
           panel.positionCards();
+          scheduleMermaidRender();
           if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
             panel.editComment(pendingId, true);
           }
@@ -362,12 +437,13 @@ window.addEventListener("message", async (event: MessageEvent) => {
         setEditorContent(resolveImagePaths(msg.markdown), latestAnchors);
         // Wait for setEditorContent's rAF (anchor injection) to complete,
         // then open edit mode — double rAF ensures anchors are in the DOM
-        if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
-          requestAnimationFrame(() => requestAnimationFrame(() => {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          scheduleMermaidRender();
+          if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
             panel.positionCards();
             panel.editComment(pendingId, true);
-          }));
-        }
+          }
+        }));
       }
       break;
     }
@@ -385,8 +461,8 @@ window.addEventListener("message", async (event: MessageEvent) => {
 });
 // ── Scroll / resize → reposition comment cards ──────────────────────────────
 
-document.getElementById("editor-pane")!.addEventListener("scroll", () => panel.positionCards(), { passive: true });
-window.addEventListener("resize", () => panel.positionCards());
+document.getElementById("editor-pane")!.addEventListener("scroll", () => { panel.positionCards(); positionMermaidOverlays(); }, { passive: true });
+window.addEventListener("resize", () => { panel.positionCards(); positionMermaidOverlays(); });
 // ── Ready signal ──────────────────────────────────────────────────────────────
 
 post({ type: "ready" });

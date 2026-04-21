@@ -296,7 +296,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
-             script-src 'nonce-${nonce}';
+             script-src 'nonce-${nonce}' 'unsafe-eval';
              img-src ${webview.cspSource} data: https:;
              font-src ${webview.cspSource};" />
   <title>Markdown Collaboration Editor</title>
@@ -306,6 +306,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   <div id="app">
     <div id="editor-pane">
       <div id="editor"></div>
+      <div id="mermaid-layer"></div>
     </div>
     <div id="comment-pane">
       <div class="pane-header">
