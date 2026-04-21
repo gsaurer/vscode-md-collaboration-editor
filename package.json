@@ -2,7 +2,7 @@
   "name": "md-collaboration-editor",
   "displayName": "Markdown Collaboration Editor",
   "description": "WYSIWYG Markdown editor with Word-like inline commenting for teams",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "GSConsult",
   "license": "MIT",
   "pricing": "Free",
