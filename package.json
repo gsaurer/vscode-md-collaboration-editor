@@ -50,6 +50,11 @@
         "command": "mdCollabEditor.toggleResolved",
         "title": "Toggle Resolved Comments",
         "category": "Markdown Collaboration Editor"
+      },
+      {
+        "command": "mdCollabEditor.openWith",
+        "title": "Open with Collaboration Editor",
+        "category": "Markdown Collaboration Editor"
       }
     ],
     "keybindings": [
@@ -60,12 +65,23 @@
       }
     ],
     "menus": {
+      "explorer/context": [
+        {
+          "command": "mdCollabEditor.openWith",
+          "when": "resourceExtname == .md",
+          "group": "navigation@10"
+        }
+      ],
       "commandPalette": [
         {
           "command": "mdCollabEditor.addComment"
         },
         {
           "command": "mdCollabEditor.toggleResolved"
+        },
+        {
+          "command": "mdCollabEditor.openWith",
+          "when": "false"
         }
       ]
     },

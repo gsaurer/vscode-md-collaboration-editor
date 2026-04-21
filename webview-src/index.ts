@@ -9,6 +9,62 @@
  *   - New-comment floating form
  */
 
+// ── Image path resolution ────────────────────────────────────────────────────
+// Relative image paths are rewritten to their webview-resource URIs BEFORE
+// the markdown reaches Milkdown, so the browser never tries a relative fetch.
+// On save the webview URIs are stripped back out so the file stays clean.
+
+declare const __resourceBase: string | undefined;
+const resourceBase: string =
+  typeof __resourceBase !== "undefined" ? __resourceBase : "";
+
+function resolveImagePaths(markdown: string): string {
+  if (!resourceBase) return markdown;
+  const base = resourceBase.replace(/\/$/, "");
+  return markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    if (/^(https?:|data:|vscode-webview-resource:|vscode-resource:)/i.test(src)) return match;
+    return `![${alt}](${base}/${src.replace(/^\.\//,"")})` ;
+  });
+}
+
+function unresolveImagePaths(markdown: string): string {
+  if (!resourceBase) return markdown;
+  const base = resourceBase.replace(/\/$/, "");
+  return markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    if (src.startsWith(base + "/")) return `![${alt}](${src.slice(base.length + 1)})`;
+    return match;
+  });
+}
+
+// ── Debug info bar ───────────────────────────────────────────────────────────
+// Shows the exact src/href the webview sees when hovering over images or links.
+// Uses a fixed overlay bar so ProseMirror re-renders can't interfere.
+
+const debugBar = document.createElement("div");
+debugBar.style.cssText = [
+  "position:fixed", "bottom:0", "left:0", "right:0",
+  "background:#1e1e1e", "color:#d4d4d4", "font:12px/24px monospace",
+  "padding:0 12px", "z-index:9999", "display:none",
+  "white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis",
+  "border-top:1px solid #555",
+].join(";");
+document.body.appendChild(debugBar);
+
+document.addEventListener("mouseover", (e: MouseEvent) => {
+  const target = e.target as Element;
+  const img = target.closest("img") as HTMLImageElement | null;
+  const a = target.closest("a") as HTMLAnchorElement | null;
+  if (img) {
+    debugBar.textContent = `img src: ${img.getAttribute("src") ?? "(none)"}`;
+    debugBar.style.display = "block";
+  } else if (a) {
+    debugBar.textContent = `link href: ${a.getAttribute("href") ?? "(none)"}`;
+    debugBar.style.display = "block";
+  } else {
+    debugBar.style.display = "none";
+  }
+});
+
 import {
   Editor,
   rootCtx,
@@ -135,7 +191,7 @@ function debouncedEdit(markdown: string): void {
     clearTimeout(editTimer);
   }
   editTimer = setTimeout(() => {
-    post({ type: "edit", markdown });
+    post({ type: "edit", markdown: unresolveImagePaths(markdown) });
   }, 400);
 }
 
@@ -194,6 +250,26 @@ const ctxAddComment = document.getElementById("ctx-add-comment")!;
 function hideCtxMenu(): void {
   ctxMenu.classList.remove("visible");
 }
+
+// ── Local link interception ────────────────────────────────────────────────────
+// Intercept clicks on links inside the editor. Relative .md links are handled
+// by posting an openFile message to the extension host; everything else is
+// allowed to bubble (external URLs are blocked by the webview CSP anyway).
+
+document.getElementById("editor-pane")!.addEventListener("click", (e: MouseEvent) => {
+  const target = (e.target as Element).closest("a");
+  if (!target) return;
+  const href = target.getAttribute("href");
+  if (!href) return;
+  // Let anchor-fragment links (#heading) pass through unmodified
+  if (href.startsWith("#")) return;
+  // Only handle relative paths that point to .md files
+  if (/^https?:/i.test(href) || href.startsWith("vscode-webview-resource:")) return;
+  if (!/\.md$/i.test(href)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  post({ type: "openFile", relativePath: href });
+});
 
 // Capture cursor context at right-click time (before the form opens)
 let contextMenuCursorContext: string = "";
@@ -275,7 +351,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
       if (pendingId) pendingNewCommentId = null;
 
       if (!milkdownEditor) {
-        milkdownEditor = await createEditor(msg.markdown, latestAnchors);
+        milkdownEditor = await createEditor(resolveImagePaths(msg.markdown), latestAnchors);
         requestAnimationFrame(() => {
           panel.positionCards();
           if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
@@ -283,7 +359,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
           }
         });
       } else {
-        setEditorContent(msg.markdown, latestAnchors);
+        setEditorContent(resolveImagePaths(msg.markdown), latestAnchors);
         // Wait for setEditorContent's rAF (anchor injection) to complete,
         // then open edit mode — double rAF ensures anchors are in the DOM
         if (pendingId && msg.comments.find((c) => c.id === pendingId)) {

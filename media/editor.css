@@ -1,0 +1,581 @@
+/* ── Reset & base ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+/* ── Layout ───────────────────────────────────── */
+#app { display: flex; height: 100vh; }
+
+#editor-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 48px;
+  min-width: 0;
+}
+
+#comment-pane {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Milkdown editor ──────────────────────────── */
+.milkdown {
+  max-width: 780px;
+  outline: none;
+}
+.milkdown .editor {
+  outline: none;
+  min-height: calc(100vh - 64px);
+  line-height: 1.7;
+}
+
+/* ── Typography ───────────────────────────────── */
+.milkdown .editor h1,
+.milkdown .editor h2,
+.milkdown .editor h3,
+.milkdown .editor h4,
+.milkdown .editor h5,
+.milkdown .editor h6 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.2em 0 0.4em;
+  color: var(--vscode-editor-foreground);
+}
+.milkdown .editor h1 { font-size: 2em; border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 0.2em; }
+.milkdown .editor h2 { font-size: 1.5em; border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 0.15em; }
+.milkdown .editor h3 { font-size: 1.25em; }
+.milkdown .editor h4 { font-size: 1.05em; }
+.milkdown .editor h5 { font-size: 0.95em; }
+.milkdown .editor h6 { font-size: 0.875em; opacity: 0.8; }
+
+.milkdown .editor p { margin: 0.6em 0; }
+
+.milkdown .editor strong { font-weight: 700; }
+.milkdown .editor em { font-style: italic; }
+
+.milkdown .editor code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.88em;
+  background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.15));
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+}
+.milkdown .editor pre {
+  background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.15));
+  border-radius: 4px;
+  padding: 1em 1.2em;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.milkdown .editor pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.milkdown .editor blockquote {
+  border-left: 4px solid var(--vscode-textBlockQuote-border, #888);
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.08));
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.milkdown .editor ul,
+.milkdown .editor ol {
+  padding-left: 1.8em;
+  margin: 0.5em 0;
+}
+.milkdown .editor li { margin: 0.2em 0; }
+
+.milkdown .editor a {
+  color: var(--vscode-textLink-foreground, #4aa0f5);
+  text-decoration: none;
+}
+.milkdown .editor a:hover { text-decoration: underline; }
+
+.milkdown .editor hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  margin: 1.2em 0;
+}
+
+/* ── Tables ───────────────────────────────────── */
+.milkdown .editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 0.95em;
+}
+.milkdown .editor th,
+.milkdown .editor td {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 6px 12px;
+  text-align: left;
+}
+.milkdown .editor th {
+  background: var(--vscode-editor-lineHighlightBackground, rgba(128,128,128,0.1));
+  font-weight: 700;
+}
+.milkdown .editor tr:nth-child(even) td {
+  background: rgba(128,128,128,0.04);
+}
+
+/* ── Context menu ─────────────────────────────── */
+#ctx-menu {
+  position: fixed;
+  display: none;
+  z-index: 200;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 160px;
+  padding: 4px 0;
+}
+#ctx-menu.visible { display: block; }
+.ctx-item {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  white-space: nowrap;
+}
+.ctx-item:hover {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
+}
+
+/* ── Comment anchor highlight ─────────────────── */
+.comment-anchor {
+  background: rgba(255, 213, 0, 0.28);
+  border-bottom: 2px solid rgba(255, 176, 0, 0.75);
+  border-radius: 2px;
+  cursor: pointer;
+  padding-bottom: 1px;
+  transition: background 0.15s;
+}
+.comment-anchor:hover,
+.comment-anchor.active {
+  background: rgba(255, 196, 0, 0.45);
+}
+
+/* ── Comment icon ────────────────────────────────── */
+.comment-icon {
+  display: inline-block;
+  font-size: 1.25em;
+  margin-left: 3px;
+  cursor: pointer;
+  vertical-align: middle;
+  user-select: none;
+  opacity: 0.9;
+  transition: opacity 0.15s, transform 0.1s;
+  line-height: 1;
+}
+.comment-icon:hover { opacity: 1; transform: scale(1.15); }
+
+/* ── Comment pane header ──────────────────────── */
+.pane-header {
+  padding: 6px 8px 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+  background: var(--vscode-sideBarSectionHeader-background, transparent);
+  user-select: none;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+#header-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  letter-spacing: -1px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.5;
+  padding: 0;
+  font-weight: 400;
+  text-transform: none;
+}
+#header-more-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+
+/* Dropdown menu */
+#header-menu {
+  display: none;
+  position: absolute;
+  right: 8px;
+  top: 34px;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  z-index: 100;
+  min-width: 170px;
+  padding: 4px 0;
+}
+#header-menu.open { display: block; }
+.header-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  white-space: nowrap;
+}
+.header-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)); }
+.header-menu-item.danger { color: var(--vscode-inputValidation-errorBorder); }
+
+#threads-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Comment card ──────────────────────────────── */
+.thread {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  cursor: default;
+  transition: background 0.1s, box-shadow 0.1s;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+.thread:hover { background: var(--vscode-list-hoverBackground); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.thread.active { background: var(--vscode-list-activeSelectionBackground); }
+
+/* Per-card ... dropdown */
+.thread-menu {
+  display: none;
+  position: absolute;
+  right: 8px;
+  top: 34px;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  z-index: 200;
+  min-width: 140px;
+  padding: 4px 0;
+}
+.thread-menu.open { display: block; }
+.thread-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  white-space: nowrap;
+}
+.thread-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground)); }
+.thread-menu-item.danger { color: var(--vscode-inputValidation-errorBorder); }
+
+.thread-anchor-preview {
+  font-size: 11px;
+  color: var(--vscode-textPreformat-foreground);
+  background: var(--vscode-textBlockQuote-background);
+  border-left: 3px solid rgba(255, 176, 0, 0.75);
+  padding: 2px 6px;
+  margin-bottom: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 0 2px 2px 0;
+}
+
+.thread-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.thread-meta-left {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.thread-author {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-body {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Like button — in the meta icon row */
+.like-btn { font-size: 13px; }
+.like-btn.liked { opacity: 1; color: var(--vscode-textLink-foreground, #3794ff); }
+.like-btn.has-likes { opacity: 0.85 !important; }
+.like-btn .like-count { font-size: 10px; margin-left: 1px; }
+
+/* ── Action buttons ───────────────────────────── */
+.thread-icon-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.55;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+}
+.icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+.icon-btn.resolve { color: var(--vscode-testing-iconPassed, #4caf50); }
+.icon-btn.danger:hover { color: var(--vscode-inputValidation-errorBorder); opacity: 1; }
+
+/* Save/cancel row — right-aligned below textarea, Word-style */
+.thread-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.6;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+}
+.btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+.btn.primary {
+  color: var(--vscode-testing-iconPassed, #4caf50);
+  opacity: 0.85;
+}
+.btn.primary:hover { opacity: 1; }
+.btn:disabled, .btn.primary:disabled { opacity: 0.3; pointer-events: none; }
+.btn.danger { color: var(--vscode-inputValidation-errorBorder); }
+
+/* ── Inline edit textarea ────────────────────────── */
+.edit-textarea {
+  width: 100%;
+  padding: 5px 7px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 3px;
+  resize: vertical;
+  min-height: 56px;
+  box-sizing: border-box;
+}
+.edit-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+
+/* ── "Add comment" new-thread panel ──────────────*/
+#new-comment-panel {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  box-sizing: border-box;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  padding: 10px 12px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 300;
+}
+#new-comment-panel.visible { display: flex; }
+#new-comment-panel .selection-preview {
+  font-size: 11px;
+  background: var(--vscode-textBlockQuote-background);
+  border-left: 3px solid rgba(255,176,0,0.75);
+  padding: 3px 7px;
+  border-radius: 0 2px 2px 0;
+  color: var(--vscode-textPreformat-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#new-comment-panel textarea {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 3px;
+  resize: vertical;
+  min-height: 56px;
+  box-sizing: border-box;
+}
+#new-comment-panel textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+#new-comment-panel .panel-actions { display: flex; gap: 4px; justify-content: flex-end; }
+#new-comment-panel .panel-actions .btn { font-size: 16px; }
+
+/* ── Thread date ──────────────────────────────── */
+.thread-date-line {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-top: 4px;
+  padding: 0 2px;
+}
+
+/* ── Resolved state ───────────────────────────── */
+.thread.resolved {
+  opacity: 0.5;
+}
+.thread.resolved .thread-body,
+.thread.resolved .thread-anchor-preview {
+  text-decoration: line-through;
+  text-decoration-color: var(--vscode-foreground);
+}
+.thread.resolved .thread-author::after {
+  content: " ✓ Resolved";
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--vscode-testing-iconPassed, #4caf50);
+  margin-left: 4px;
+}
+.btn.resolve { color: var(--vscode-testing-iconPassed, #4caf50); }
+
+/* ── Replies ──────────────────────────────────── */
+.replies {
+  margin-top: 10px;
+  border-left: 2px solid var(--vscode-panel-border);
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Hide reply action buttons until hovered */
+.reply .reply-icon-actions-hover { opacity: 0; transition: opacity 0.12s; }
+.reply:hover .reply-icon-actions-hover,
+.reply .reply-icon-actions-hover:has(.has-likes) { opacity: 1; }
+.reply {
+  font-size: 12px;
+}
+.reply .thread-body {
+  font-size: 12px;
+}
+.reply .thread-actions {
+  margin-top: 5px;
+}
+.reply-edit-textarea {
+  width: 100%;
+  padding: 4px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 3px;
+  resize: vertical;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.reply-edit-textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+
+/* ── Reply bar (always-visible, Word-style) ───── */
+.reply-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.2));
+  margin-top: 4px;
+}
+.reply-bar-textarea {
+  width: 100%;
+  resize: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  background: var(--vscode-input-background, rgba(128,128,128,0.08));
+  color: var(--vscode-input-foreground);
+  min-height: 26px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.reply-bar-textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+.reply-bar-actions {
+  display: none;
+  gap: 2px;
+  justify-content: flex-end;
+}
+.reply-bar.active .reply-bar-actions { display: flex; }
+
+/* ── Empty state ──────────────────────────────── */
+.empty-state {
+  padding: 20px 14px;
+  font-size: 12px;
+  opacity: 0.55;
+  text-align: center;
+  line-height: 1.6;
+}
