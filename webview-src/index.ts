@@ -74,7 +74,29 @@ import {
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
-import { getMarkdown, replaceAll } from "@milkdown/utils";
+import { getMarkdown, replaceAll, callCommand } from "@milkdown/utils";
+import {
+  toggleStrongCommand,
+  toggleEmphasisCommand,
+  toggleInlineCodeCommand,
+  wrapInHeadingCommand,
+  wrapInBulletListCommand,
+  wrapInOrderedListCommand,
+  wrapInBlockquoteCommand,
+  turnIntoTextCommand,
+  insertHrCommand,
+} from "@milkdown/preset-commonmark";
+import {
+  insertTableCommand,
+  addRowBeforeCommand,
+  addRowAfterCommand,
+  addColBeforeCommand,
+  addColAfterCommand,
+  deleteSelectedCellsCommand,
+  selectRowCommand,
+  selectColCommand,
+} from "@milkdown/preset-gfm";
+import { cellAround, TableMap } from "prosemirror-tables";
 
 import { EditorView } from "prosemirror-view";
 
@@ -112,7 +134,7 @@ let mermaidRendering = false;
 let mermaidPendingAfterRender = false;
 
 function positionMermaidOverlays(): void {
-  const pane = document.getElementById("editor-pane")!;
+  const pane = document.getElementById("editor")!;
   const layer = document.getElementById("mermaid-layer")!;
   const paneRect = pane.getBoundingClientRect();
   layer.innerHTML = "";
@@ -197,6 +219,106 @@ function scrollToComment(commentId: string): void {
 
 const panel = new CommentPanel("threads-container", post, scrollToComment);
 
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+
+function runCommand<T>(cmd: { key: string }, payload?: T): void {
+  if (!milkdownEditor) return;
+  milkdownEditor.action(callCommand(cmd.key, payload as never));
+  // Return focus to the editor after toolbar interaction
+  milkdownEditor.action((ctx) => { ctx.get(editorViewCtx).focus(); });
+}
+
+function isInTable(): boolean {
+  if (!editorView) return false;
+  const { $from } = editorView.state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === "table") return true;
+  }
+  return false;
+}
+
+function getCurrentRowCol(): { row: number; col: number } | null {
+  if (!editorView) return null;
+  const { state } = editorView;
+  const $cell = cellAround(state.selection.$from);
+  if (!$cell) return null;
+  const table = $cell.node(-1);
+  const tableStart = $cell.start(-1);
+  const map = TableMap.get(table);
+  const cellPos = $cell.pos - tableStart;
+  const cell = map.findCell(cellPos);
+  return { row: cell.top, col: cell.left };
+}
+
+function updateToolbarState(): void {
+  if (!editorView) return;
+  const { state } = editorView;
+  const { from, $from } = state.selection;
+  const parent = $from.node(1) ?? $from.node();
+
+  // Block type selector
+  const sel = document.getElementById("tb-block-type") as HTMLSelectElement;
+  if (sel) {
+    const typeName = parent.type.name;
+    const level = parent.attrs?.level;
+    if (typeName === "heading" && level) sel.value = `h${level}`;
+    else sel.value = "paragraph";
+  }
+
+  // Active mark buttons
+  const marks = state.storedMarks ?? state.selection.$from.marks();
+  const activeMarks = new Set(marks.map((m) => m.type.name));
+  state.doc.nodesBetween(from, from, (n) => {
+    n.marks.forEach((m) => activeMarks.add(m.type.name));
+  });
+  document.getElementById("tb-bold")?.classList.toggle("active", activeMarks.has("strong"));
+  document.getElementById("tb-italic")?.classList.toggle("active", activeMarks.has("em"));
+  document.getElementById("tb-code")?.classList.toggle("active", activeMarks.has("code_inline"));
+
+  // Show/hide table toolbar section
+  const tableTools = document.getElementById("tb-table-tools");
+  if (tableTools) tableTools.style.display = isInTable() ? "flex" : "none";
+}
+
+// Block type dropdown
+document.getElementById("tb-block-type")!.addEventListener("change", (e) => {
+  const val = (e.target as HTMLSelectElement).value;
+  if (val === "paragraph") runCommand(turnIntoTextCommand);
+  else runCommand(wrapInHeadingCommand, parseInt(val.slice(1)));
+});
+
+// Format buttons
+document.getElementById("tb-bold")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(toggleStrongCommand); });
+document.getElementById("tb-italic")!.addEventListener("mousedown", (e) => { e.preventDefault(); runCommand(toggleEmphasisCommand); });
+document.getElementById("tb-code")!.addEventListener("mousedown",   (e) => { e.preventDefault(); runCommand(toggleInlineCodeCommand); });
+document.getElementById("tb-ul")!.addEventListener("mousedown",     (e) => { e.preventDefault(); runCommand(wrapInBulletListCommand); });
+document.getElementById("tb-ol")!.addEventListener("mousedown",     (e) => { e.preventDefault(); runCommand(wrapInOrderedListCommand); });
+document.getElementById("tb-quote")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(wrapInBlockquoteCommand); });
+document.getElementById("tb-hr")!.addEventListener("mousedown",     (e) => { e.preventDefault(); runCommand(insertHrCommand); });
+document.getElementById("tb-table")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(insertTableCommand, { row: 3, col: 3 }); });
+
+// Table editing buttons (shown only when cursor is in a table)
+document.getElementById("tb-row-before")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(addRowBeforeCommand); });
+document.getElementById("tb-row-after")!.addEventListener("mousedown",   (e) => { e.preventDefault(); runCommand(addRowAfterCommand); });
+document.getElementById("tb-del-row")!.addEventListener("mousedown",     (e) => {
+  e.preventDefault();
+  const pos = getCurrentRowCol();
+  if (pos === null) return;
+  milkdownEditor?.action(callCommand(selectRowCommand.key, { index: pos.row }));
+  milkdownEditor?.action(callCommand(deleteSelectedCellsCommand.key));
+  milkdownEditor?.action((ctx) => { ctx.get(editorViewCtx).focus(); });
+});
+document.getElementById("tb-col-before")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(addColBeforeCommand); });
+document.getElementById("tb-col-after")!.addEventListener("mousedown",   (e) => { e.preventDefault(); runCommand(addColAfterCommand); });
+document.getElementById("tb-del-col")!.addEventListener("mousedown",     (e) => {
+  e.preventDefault();
+  const pos = getCurrentRowCol();
+  if (pos === null) return;
+  milkdownEditor?.action(callCommand(selectColCommand.key, { index: pos.col }));
+  milkdownEditor?.action(callCommand(deleteSelectedCellsCommand.key));
+  milkdownEditor?.action((ctx) => { ctx.get(editorViewCtx).focus(); });
+});
+
 // ── Milkdown setup ────────────────────────────────────────────────────────────
 
 async function createEditor(
@@ -214,6 +336,10 @@ async function createEditor(
         }
         debouncedEdit(markdown);
       });
+
+      ctx.get(listenerCtx).updated((_ctx, _doc, _prevDoc) => {
+        requestAnimationFrame(updateToolbarState);
+      });
     })
     .use(commonmark)
     .use(gfm)
@@ -224,6 +350,13 @@ async function createEditor(
   editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     editorView = view as unknown as EditorView;
+
+    // Update toolbar on every selection change
+    const originalDispatch = view.dispatch.bind(view);
+    (view as { dispatch: typeof view.dispatch }).dispatch = (tr) => {
+      originalDispatch(tr);
+      if (tr.selectionSet || tr.docChanged) requestAnimationFrame(updateToolbarState);
+    };
 
     const anchorPlugin = createAnchorPlugin(
       anchors,
@@ -330,7 +463,7 @@ function hideCtxMenu(): void {
 // by posting an openFile message to the extension host; everything else is
 // allowed to bubble (external URLs are blocked by the webview CSP anyway).
 
-document.getElementById("editor-pane")!.addEventListener("click", (e: MouseEvent) => {
+document.getElementById("editor")!.addEventListener("click", (e: MouseEvent) => {
   const target = (e.target as Element).closest("a");
   if (!target) return;
   const href = target.getAttribute("href");
@@ -348,7 +481,7 @@ document.getElementById("editor-pane")!.addEventListener("click", (e: MouseEvent
 // Capture cursor context at right-click time (before the form opens)
 let contextMenuCursorContext: string = "";
 
-document.getElementById("editor-pane")!.addEventListener("contextmenu", (e: MouseEvent) => {
+document.getElementById("editor")!.addEventListener("contextmenu", (e: MouseEvent) => {
   e.preventDefault();
   contextMenuCursorContext = getCursorContext();
   ctxMenu.style.left = e.clientX + "px";
@@ -461,7 +594,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
 });
 // ── Scroll / resize → reposition comment cards ──────────────────────────────
 
-document.getElementById("editor-pane")!.addEventListener("scroll", () => { panel.positionCards(); positionMermaidOverlays(); }, { passive: true });
+document.getElementById("editor")!.addEventListener("scroll", () => { panel.positionCards(); positionMermaidOverlays(); }, { passive: true });
 window.addEventListener("resize", () => { panel.positionCards(); positionMermaidOverlays(); });
 // ── Ready signal ──────────────────────────────────────────────────────────────
 

@@ -305,6 +305,36 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 <body>
   <div id="app">
     <div id="editor-pane">
+      <div id="toolbar">
+        <select id="tb-block-type" title="Block type">
+          <option value="paragraph">Paragraph</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="h4">Heading 4</option>
+        </select>
+        <span class="tb-divider"></span>
+        <button class="tb-btn" id="tb-bold"      title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="tb-btn" id="tb-italic"    title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="tb-btn" id="tb-code"      title="Inline code"><code>&lt;/&gt;</code></button>
+        <span class="tb-divider"></span>
+        <button class="tb-btn" id="tb-ul"        title="Bullet list">&#8226;&#8212;</button>
+        <button class="tb-btn" id="tb-ol"        title="Numbered list">1&#8212;</button>
+        <button class="tb-btn" id="tb-quote"     title="Blockquote">&#10077;</button>
+        <button class="tb-btn" id="tb-hr"        title="Horizontal rule">&#8213;</button>
+        <span class="tb-divider"></span>
+        <button class="tb-btn" id="tb-table"     title="Insert table">&#9112;</button>
+        <span id="tb-table-tools" style="display:none">
+          <span class="tb-divider" style="display:inline-block"></span>
+          <button class="tb-btn" id="tb-row-before" title="Add row above">&#8593;&#9644;</button>
+          <button class="tb-btn" id="tb-row-after"  title="Add row below">&#8595;&#9644;</button>
+          <button class="tb-btn danger" id="tb-del-row"    title="Delete row">&#10006;&#9644;</button>
+          <span class="tb-divider" style="display:inline-block"></span>
+          <button class="tb-btn" id="tb-col-before" title="Add column left">&#8592;&#9644;</button>
+          <button class="tb-btn" id="tb-col-after"  title="Add column right">&#8594;&#9644;</button>
+          <button class="tb-btn danger" id="tb-del-col"    title="Delete column">&#10006;&#9643;</button>
+        </span>
+      </div>
       <div id="editor"></div>
       <div id="mermaid-layer"></div>
     </div>
