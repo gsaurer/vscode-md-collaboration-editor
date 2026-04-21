@@ -297,6 +297,8 @@ document.getElementById("tb-quote")!.addEventListener("mousedown",  (e) => { e.p
 document.getElementById("tb-hr")!.addEventListener("mousedown",     (e) => { e.preventDefault(); runCommand(insertHrCommand); });
 document.getElementById("tb-table")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(insertTableCommand, { row: 3, col: 3 }); });
 
+document.getElementById("tb-add-comment")!.addEventListener("mousedown", (e) => { e.preventDefault(); openNewCommentForm(); });
+
 // Table editing buttons (shown only when cursor is in a table)
 document.getElementById("tb-row-before")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(addRowBeforeCommand); });
 document.getElementById("tb-row-after")!.addEventListener("mousedown",   (e) => { e.preventDefault(); runCommand(addRowAfterCommand); });
@@ -453,6 +455,8 @@ document.addEventListener("keydown", (e: KeyboardEvent) => {
 
 const ctxMenu = document.getElementById("ctx-menu")!;
 const ctxAddComment = document.getElementById("ctx-add-comment")!;
+const ctxTableDividers = ctxMenu.querySelectorAll<HTMLElement>(".ctx-divider");
+const ctxTableItems = ["ctx-table-div", "ctx-row-before", "ctx-row-after", "ctx-del-row", "ctx-col-before", "ctx-col-after", "ctx-del-col"].map((id) => document.getElementById(id)!);
 
 function hideCtxMenu(): void {
   ctxMenu.classList.remove("visible");
@@ -484,6 +488,9 @@ let contextMenuCursorContext: string = "";
 document.getElementById("editor")!.addEventListener("contextmenu", (e: MouseEvent) => {
   e.preventDefault();
   contextMenuCursorContext = getCursorContext();
+  // Show/hide table items based on cursor position
+  const inTable = isInTable();
+  ctxTableItems.forEach((el) => { if (el) el.style.display = inTable ? "" : "none"; });
   ctxMenu.style.left = e.clientX + "px";
   ctxMenu.style.top = e.clientY + "px";
   ctxMenu.classList.add("visible");
@@ -492,6 +499,25 @@ document.getElementById("editor")!.addEventListener("contextmenu", (e: MouseEven
 ctxAddComment.addEventListener("click", () => {
   hideCtxMenu();
   openNewCommentForm(contextMenuCursorContext || undefined);
+});
+
+document.getElementById("ctx-row-before")!.addEventListener("click", () => { hideCtxMenu(); runCommand(addRowBeforeCommand); });
+document.getElementById("ctx-row-after")!.addEventListener("click",  () => { hideCtxMenu(); runCommand(addRowAfterCommand); });
+document.getElementById("ctx-del-row")!.addEventListener("click",    () => {
+  hideCtxMenu();
+  const pos = getCurrentRowCol(); if (!pos) return;
+  milkdownEditor?.action(callCommand(selectRowCommand.key, { index: pos.row }));
+  milkdownEditor?.action(callCommand(deleteSelectedCellsCommand.key));
+  milkdownEditor?.action((ctx) => { ctx.get(editorViewCtx).focus(); });
+});
+document.getElementById("ctx-col-before")!.addEventListener("click", () => { hideCtxMenu(); runCommand(addColBeforeCommand); });
+document.getElementById("ctx-col-after")!.addEventListener("click",  () => { hideCtxMenu(); runCommand(addColAfterCommand); });
+document.getElementById("ctx-del-col")!.addEventListener("click",    () => {
+  hideCtxMenu();
+  const pos = getCurrentRowCol(); if (!pos) return;
+  milkdownEditor?.action(callCommand(selectColCommand.key, { index: pos.col }));
+  milkdownEditor?.action(callCommand(deleteSelectedCellsCommand.key));
+  milkdownEditor?.action((ctx) => { ctx.get(editorViewCtx).focus(); });
 });
 
 document.addEventListener("click", hideCtxMenu);

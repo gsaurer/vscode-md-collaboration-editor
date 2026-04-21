@@ -201,8 +201,6 @@ export class CommentPanel {
         <button class="btn primary" data-action="save-edit" data-id="${esc(comment.id)}" title="Send" disabled>&#10148;</button>
         <button class="btn" data-action="cancel-edit" title="Cancel">&#10005;</button>
       </div>
-      ${repliesHtml}
-      ${replyBarHtml}
     </div>`;
     }
 

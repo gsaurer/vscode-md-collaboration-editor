@@ -229,6 +229,13 @@ body {
   background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, var(--vscode-editor-foreground));
 }
+.ctx-item.danger { color: var(--vscode-inputValidation-errorBorder); }
+.ctx-item.danger:hover { background: var(--vscode-inputValidation-errorBorder); color: #fff; }
+.ctx-divider {
+  height: 1px;
+  background: var(--vscode-menu-border, var(--vscode-panel-border));
+  margin: 4px 0;
+}
 
 /* ── Comment anchor highlight ─────────────────── */
 .comment-anchor {

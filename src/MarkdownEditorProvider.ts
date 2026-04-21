@@ -324,6 +324,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <button class="tb-btn" id="tb-hr"        title="Horizontal rule">&#8213;</button>
         <span class="tb-divider"></span>
         <button class="tb-btn" id="tb-table"     title="Insert table">&#9112;</button>
+        <span class="tb-divider"></span>
+        <button class="tb-btn" id="tb-add-comment" title="Add Comment (Ctrl+Shift+;)">&#128172;</button>
         <span id="tb-table-tools" style="display:none">
           <span class="tb-divider" style="display:inline-block"></span>
           <button class="tb-btn" id="tb-row-before" title="Add row above">&#8593;&#9644;</button>
@@ -353,7 +355,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
   <!-- Right-click context menu -->
   <div id="ctx-menu">
-    <div class="ctx-item" id="ctx-add-comment">💬 Add Comment</div>
+    <div class="ctx-item" id="ctx-add-comment">&#128172;&nbsp; Add Comment</div>
+    <div class="ctx-divider" id="ctx-table-div"></div>
+    <div class="ctx-item" id="ctx-row-before">&#8593;&#9644;&nbsp; Add row above</div>
+    <div class="ctx-item" id="ctx-row-after">&#8595;&#9644;&nbsp; Add row below</div>
+    <div class="ctx-item danger" id="ctx-del-row">&#10006;&#9644;&nbsp; Delete row</div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" id="ctx-col-before">&#8592;&#9644;&nbsp; Add column left</div>
+    <div class="ctx-item" id="ctx-col-after">&#8594;&#9644;&nbsp; Add column right</div>
+    <div class="ctx-item danger" id="ctx-del-col">&#10006;&#9643;&nbsp; Delete column</div>
   </div>
 
   <script nonce="${nonce}">window.__resourceBase = "${resourceBase}";</script>
