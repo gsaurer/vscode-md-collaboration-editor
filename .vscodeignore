@@ -8,3 +8,8 @@ webview-src/**
 esbuild.js
 tsconfig*.json
 **/*.map
+testdocs/**
+SKILL.md
+media/gsconsult-logo.png
+media/gsconsulting-logo_simple.png
+media/icon_simple.png
