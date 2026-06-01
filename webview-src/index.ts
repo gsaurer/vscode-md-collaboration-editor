@@ -219,6 +219,33 @@ function scrollToComment(commentId: string): void {
 
 const panel = new CommentPanel("threads-container", post, scrollToComment);
 
+// ── Comment pane visibility toggle ──────────────────────────────────────────
+
+type WebviewState = { commentsPaneHidden?: boolean };
+let commentsPaneHidden = !!((vscode.getState() as WebviewState | undefined)?.commentsPaneHidden);
+
+function applyCommentPaneVisibility(): void {
+  const app = document.getElementById("app");
+  const btn = document.getElementById("tb-toggle-comments") as HTMLButtonElement | null;
+  if (!app || !btn) return;
+  app.classList.toggle("comments-hidden", commentsPaneHidden);
+  btn.classList.toggle("active", commentsPaneHidden);
+  btn.title = commentsPaneHidden ? "Show comments pane" : "Hide comments pane";
+  btn.setAttribute("aria-pressed", commentsPaneHidden ? "true" : "false");
+}
+
+function setCommentPaneHidden(hidden: boolean): void {
+  commentsPaneHidden = hidden;
+  applyCommentPaneVisibility();
+  const prev = (vscode.getState() as WebviewState | undefined) ?? {};
+  vscode.setState({ ...prev, commentsPaneHidden: hidden });
+  requestAnimationFrame(() => panel.positionCards());
+}
+
+function toggleCommentPane(): void {
+  setCommentPaneHidden(!commentsPaneHidden);
+}
+
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 function runCommand<T>(cmd: { key: string }, payload?: T): void {
@@ -298,6 +325,10 @@ document.getElementById("tb-hr")!.addEventListener("mousedown",     (e) => { e.p
 document.getElementById("tb-table")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(insertTableCommand, { row: 3, col: 3 }); });
 
 document.getElementById("tb-add-comment")!.addEventListener("mousedown", (e) => { e.preventDefault(); openNewCommentForm(); });
+document.getElementById("tb-toggle-comments")!.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  toggleCommentPane();
+});
 
 // Table editing buttons (shown only when cursor is in a table)
 document.getElementById("tb-row-before")!.addEventListener("mousedown",  (e) => { e.preventDefault(); runCommand(addRowBeforeCommand); });
@@ -362,7 +393,10 @@ async function createEditor(
 
     const anchorPlugin = createAnchorPlugin(
       anchors,
-      (commentId) => { panel.focusComment(commentId); }
+      (commentId) => {
+        if (commentsPaneHidden) setCommentPaneHidden(false);
+        panel.focusComment(commentId);
+      }
     );
     const newState = view.state.reconfigure({
       plugins: [...view.state.plugins, anchorPlugin],
@@ -431,6 +465,7 @@ function generateClientId(): string {
 }
 
 function openNewCommentForm(capturedContext?: string): void {
+  if (commentsPaneHidden) setCommentPaneHidden(false);
   const context = capturedContext ?? getCursorContext();
   const id = generateClientId();
   pendingNewCommentId = id;
@@ -589,6 +624,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
           panel.positionCards();
           scheduleMermaidRender();
           if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
+            if (commentsPaneHidden) setCommentPaneHidden(false);
             panel.editComment(pendingId, true);
           }
         });
@@ -599,6 +635,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
         requestAnimationFrame(() => requestAnimationFrame(() => {
           scheduleMermaidRender();
           if (pendingId && msg.comments.find((c) => c.id === pendingId)) {
+            if (commentsPaneHidden) setCommentPaneHidden(false);
             panel.positionCards();
             panel.editComment(pendingId, true);
           }
@@ -608,6 +645,7 @@ window.addEventListener("message", async (event: MessageEvent) => {
     }
 
     case "focusComment": {
+      if (commentsPaneHidden) setCommentPaneHidden(false);
       panel.focusComment(msg.commentId);
       break;
     }
@@ -618,6 +656,9 @@ window.addEventListener("message", async (event: MessageEvent) => {
     }
   }
 });
+
+// Apply persisted pane visibility once DOM is ready and handlers are wired.
+applyCommentPaneVisibility();
 // ── Scroll / resize → reposition comment cards ──────────────────────────────
 
 document.getElementById("editor")!.addEventListener("scroll", () => { panel.positionCards(); positionMermaidOverlays(); }, { passive: true });

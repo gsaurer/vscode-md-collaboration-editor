@@ -326,6 +326,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <button class="tb-btn" id="tb-table"     title="Insert table">&#9112;</button>
         <span class="tb-divider"></span>
         <button class="tb-btn" id="tb-add-comment" title="Add Comment (Ctrl+Shift+;)">&#128172;</button>
+        <button class="tb-btn" id="tb-toggle-comments" title="Hide comments pane">&#9776;</button>
         <span id="tb-table-tools" style="display:none">
           <span class="tb-divider" style="display:inline-block"></span>
           <button class="tb-btn" id="tb-row-before" title="Add row above">&#8593;&#9644;</button>

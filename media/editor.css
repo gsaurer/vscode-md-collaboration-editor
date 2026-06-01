@@ -11,6 +11,14 @@ body {
 /* ── Layout ───────────────────────────────────── */
 #app { display: flex; height: 100vh; }
 
+#app.comments-hidden #comment-pane {
+  display: none;
+}
+
+#app.comments-hidden .milkdown {
+  max-width: none;
+}
+
 #editor-pane {
   flex: 1;
   overflow-y: auto;
